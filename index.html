@@ -35,17 +35,15 @@
     }
     .shell { width: min(1080px, calc(100% - 36px)); margin: 0 auto; padding: 54px 0 48px; }
     header { display: flex; justify-content: space-between; align-items: end; gap: 24px; margin-bottom: 30px; }
+    .home-button { color: inherit; text-align: left; background: transparent; border: 0; padding: 0; }
+    .home-button:hover h1, .home-button:focus-visible h1 { color: var(--accent); }
+    .home-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 8px; }
     .kicker { color: var(--accent); font: 700 12px/1.2 Arial, sans-serif; letter-spacing: .14em; text-transform: uppercase; }
     h1 { margin: 8px 0 0; font-size: clamp(2.2rem, 5vw, 4.3rem); line-height: .96; font-weight: 400; max-width: 650px; }
     .intro { color: var(--muted); font: 15px/1.5 Arial, sans-serif; max-width: 300px; margin: 0; }
     .workspace { display: grid; grid-template-columns: minmax(0, 1fr) 290px; gap: 20px; align-items: start; }
     .main-panel, aside { background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); }
     .main-panel { padding: clamp(24px, 5vw, 52px); min-height: 480px; }
-    .status { display: flex; align-items: center; gap: 8px; color: var(--muted); font: 12px Arial, sans-serif; margin-bottom: 38px; }
-    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
-    .status-dot.loading { background: var(--warning); }
-    .status-dot.error { background: #a92e2e; }
-    .step-number { color: var(--accent); font: 700 13px Arial, sans-serif; letter-spacing: .08em; }
     h2 { font-size: clamp(1.7rem, 3.5vw, 2.75rem); line-height: 1.12; font-weight: 400; margin: 12px 0 30px; }
     .choices { display: grid; gap: 11px; max-width: 650px; }
     button { font: inherit; cursor: pointer; }
@@ -54,6 +52,7 @@
     .arrow { color: var(--accent); font: 20px Arial, sans-serif; }
     .empty { color: var(--muted); font: 15px/1.5 Arial, sans-serif; }
     .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--line); }
+    .toolbar[hidden] { display: none; }
     .back, .download { border: 0; padding: 11px 14px; font: 700 12px Arial, sans-serif; }
     .back { color: var(--ink); background: transparent; padding-left: 0; }
     .back:disabled { color: #b4beb7; cursor: not-allowed; }
@@ -75,40 +74,35 @@
       .workspace { grid-template-columns: 1fr; }
       aside { order: -1; }
       .main-panel { min-height: 0; padding: 24px 20px; }
-      .status { margin-bottom: 26px; }
     }
   </style>
 </head>
 <body>
   <main class="shell">
     <header>
-      <div><div class="kicker">Troubleshooting · IT</div><h1>Diagnóstico de equipamentos</h1></div>
-      <p class="intro">Siga as perguntas para chegar ao próximo procedimento ou solução.</p>
+      <button class="home-button" id="home-button" type="button" aria-label="Voltar ao início">
+        <div class="kicker">Troubleshooting · IT</div><h1>Diagnóstico de equipamentos</h1>
+      </button>
     </header>
     <div class="workspace">
       <section class="main-panel" aria-live="polite">
-        <div class="status"><span class="status-dot loading" id="status-dot"></span><span id="status-text">Carregando roteiro...</span></div>
         <div id="step-content"><p class="empty">Buscando dados da planilha publicada.</p></div>
-        <div class="toolbar">
+        <div class="toolbar" id="toolbar" hidden>
           <button class="back" id="back-button" type="button" disabled>← Voltar</button>
           <button class="download" id="download-button" type="button">↓ Baixar log</button>
         </div>
       </section>
-      <aside>
-        <h3>Log da sessão</h3>
-        <ol class="trail" id="trail"><li class="trail-empty">As escolhas aparecerão aqui.</li></ol>
-      </aside>
     </div>
   </main>
   <script>
     const csvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRSUlhCmw7cvlmm9uz9OviQTLXHNnOl8dw1q7frP2TGDPqOe4i3MFhyD7MqoSFTqf0mRVqkUwZn1gvW/pub?gid=0&single=true&output=csv';
     const state = { nodes: new Map(), currentId: null, history: [], log: [] };
     const content = document.getElementById('step-content');
-    const trail = document.getElementById('trail');
+    const toolbar = document.getElementById('toolbar');
     const backButton = document.getElementById('back-button');
     const downloadButton = document.getElementById('download-button');
-    const statusText = document.getElementById('status-text');
-    const statusDot = document.getElementById('status-dot');
+    const homeButton = document.getElementById('home-button');
+    let rootId = null;
 
     function parseCsv(text) {
       const rows = [], row = [];
@@ -156,34 +150,35 @@
       return node;
     }
 
-    function renderTrail() {
-      trail.innerHTML = state.log.length ? state.log.map(entry => `<li class="${entry.id === state.currentId ? 'current' : ''}">${safeLabel(entry.label)}</li>`).join('') : '<li class="trail-empty">As escolhas aparecerão aqui.</li>';
-    }
-
     function renderNode(id, fromAnswer) {
       const node = state.nodes.get(String(id));
       if (!node) { content.innerHTML = '<p class="error">Este passo aponta para um registro que não existe na planilha.</p>'; return; }
       state.currentId = String(id);
       const choices = getChoices(node).filter(item => state.nodes.has(item.id));
-      content.innerHTML = `<div class="step-number">ETAPA ${state.log.length + 1}</div><h2>${safeLabel(node.label)}</h2><div class="choices">${choices.map(choice => `<button class="choice" data-id="${safeLabel(choice.id)}" data-answer="${choice.answer}" type="button"><span>${choice.answer === 'sim' ? 'Sim' : choice.answer === 'nao' ? 'Não' : safeLabel(state.nodes.get(choice.id).label)}</span><span class="arrow">→</span></button>`).join('') || '<p class="empty">Fim deste roteiro. Baixe o log para registrar o atendimento.</p>'}</div>`;
+      content.innerHTML = `<h2>${safeLabel(node.label)}</h2><div class="choices">${choices.map(choice => `<button class="choice" data-id="${safeLabel(choice.id)}" data-answer="${choice.answer}" type="button"><span>${choice.answer === 'sim' ? 'Sim' : choice.answer === 'nao' ? 'Não' : safeLabel(state.nodes.get(choice.id).label)}</span><span class="arrow">→</span></button>`).join('') || '<p class="empty">Fim deste roteiro.</p>'}</div>`;
       content.querySelectorAll('.choice').forEach(button => button.addEventListener('click', () => {
         state.history.push(state.currentId);
-        const answer = button.dataset.answer === 'sim' ? 'Sim' : button.dataset.answer === 'nao' ? 'Não' : 'Selecionar';
+        const answer = button.dataset.answer === 'sim' ? 'Sim' : button.dataset.answer === 'nao' ? 'Não' : state.nodes.get(button.dataset.id).label;
         const nextNode = getNextNode(button.dataset.id);
-        state.log.push({ id: nextNode.id, label: `${nextNode.label} (${answer})` });
+        state.log.push({ question: node.label, answer });
         renderNode(nextNode.id, false);
       }));
       backButton.disabled = state.history.length === 0;
-      statusText.textContent = `${state.nodes.size} etapas disponíveis`;
-      statusDot.className = 'status-dot';
-      renderTrail();
+      toolbar.hidden = state.log.length === 0;
     }
 
+    homeButton.addEventListener('click', () => {
+      state.currentId = rootId;
+      state.history = [];
+      state.log = [];
+      renderNode(rootId, false);
+    });
     backButton.addEventListener('click', () => { const previous = state.history.pop(); if (previous) { state.log.pop(); renderNode(previous, false); } });
     downloadButton.addEventListener('click', () => {
-      const lines = [['Data', 'ID', 'Registro'], ...state.log.map(entry => [new Date().toLocaleString('pt-BR'), entry.id, entry.label])];
-      const csv = lines.map(line => line.map(value => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n');
-      const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); link.download = `diagnostico-${new Date().toISOString().slice(0, 10)}.csv`; link.hidden = true; document.body.appendChild(link); link.click(); setTimeout(() => { URL.revokeObjectURL(link.href); link.remove(); }, 1000);
+      const cleanCell = value => String(value).replace(/[\t\r\n]+/g, ' ');
+      const lines = [['Data', 'Pergunta', 'Resposta'], ...state.log.map(entry => [new Date().toLocaleString('pt-BR'), entry.question, entry.answer])];
+      const text = '\ufeff' + lines.map(line => line.map(cleanCell).join('\t')).join('\r\n');
+      const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' })); link.download = `diagnostico-${new Date().toISOString().slice(0, 10)}.txt`; link.hidden = true; document.body.appendChild(link); link.click(); setTimeout(() => { URL.revokeObjectURL(link.href); link.remove(); }, 1000);
     });
 
     fetch(csvUrl).then(response => { if (!response.ok) throw new Error(`HTTP ${response.status}`); return response.text(); }).then(text => {
@@ -192,9 +187,9 @@
       rows.forEach(node => state.nodes.set(node.id, node));
       const root = rows.find(node => node.id === '1') || rows.find(node => !node.pai);
       if (!root) throw new Error('Não foi encontrada uma etapa inicial.');
+      rootId = root.id;
       renderNode(root.id, false);
     }).catch(error => {
-      statusText.textContent = 'Não foi possível carregar a planilha'; statusDot.className = 'status-dot error';
       content.innerHTML = `<p class="error">${safeLabel(error.message)}<br><br>Confirme se a planilha está publicada na web e se o navegador permite o carregamento do CSV.</p>`;
     });
   </script>
