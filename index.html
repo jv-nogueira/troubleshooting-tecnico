@@ -51,6 +51,13 @@
     .choice:hover, .choice:focus-visible { background: var(--accent-soft); border-color: var(--accent); transform: translateX(4px); outline: none; }
     .arrow { color: var(--accent); font: 20px Arial, sans-serif; }
     .empty { color: var(--muted); font: 15px/1.5 Arial, sans-serif; }
+    .feedback { margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--line); }
+    .feedback label { display: block; color: var(--muted); font: 14px/1.5 Arial, sans-serif; margin-bottom: 10px; }
+    .feedback textarea { display: block; width: 100%; min-height: 120px; resize: vertical; padding: 12px; color: var(--ink); background: #fbfcfa; border: 1px solid var(--line); font: 15px/1.5 Arial, sans-serif; }
+    .feedback textarea:focus { border-color: var(--accent); outline: 2px solid var(--accent-soft); }
+    .feedback button { margin-top: 12px; color: white; background: var(--accent); border: 0; padding: 11px 14px; font: 700 12px Arial, sans-serif; }
+    .feedback button:hover, .feedback button:focus-visible { background: var(--accent-dark); outline: none; }
+    .feedback-message { color: var(--muted); font: 13px/1.4 Arial, sans-serif; margin: 12px 0 0; }
     .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--line); }
     .toolbar[hidden] { display: none; }
     .back, .download { border: 0; padding: 11px 14px; font: 700 12px Arial, sans-serif; }
@@ -96,6 +103,7 @@
   </main>
   <script>
     const csvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRSUlhCmw7cvlmm9uz9OviQTLXHNnOl8dw1q7frP2TGDPqOe4i3MFhyD7MqoSFTqf0mRVqkUwZn1gvW/pub?gid=0&single=true&output=csv';
+    const feedbackUrl = 'https://script.google.com/macros/s/AKfycbwo0DnCb5T3Gtzr7TEurmK8z06BphS78E2l-x8purKh5LEw3VPvD7c5fW-qrIVuHWHiOA/exec';
     const state = { nodes: new Map(), currentId: null, history: [], log: [] };
     const content = document.getElementById('step-content');
     const toolbar = document.getElementById('toolbar');
@@ -155,7 +163,8 @@
       if (!node) { content.innerHTML = '<p class="error">Este passo aponta para um registro que não existe na planilha.</p>'; return; }
       state.currentId = String(id);
       const choices = getChoices(node).filter(item => state.nodes.has(item.id));
-      content.innerHTML = `<h2>${safeLabel(node.label)}</h2><div class="choices">${choices.map(choice => `<button class="choice" data-id="${safeLabel(choice.id)}" data-answer="${choice.answer}" type="button"><span>${choice.answer === 'sim' ? 'Sim' : choice.answer === 'nao' ? 'Não' : safeLabel(state.nodes.get(choice.id).label)}</span><span class="arrow">→</span></button>`).join('') || '<p class="empty">Fim deste roteiro.</p>'}</div>`;
+      const endContent = choices.length ? '' : `<div class="feedback"><label for="feedback-message">Como foi o diagnóstico? Envie seu feedback.</label><textarea id="feedback-message" maxlength="2000" placeholder="Escreva sua mensagem"></textarea><button id="send-feedback" type="button">Enviar feedback</button><p class="feedback-message" id="feedback-status" aria-live="polite"></p></div>`;
+      content.innerHTML = `<h2>${safeLabel(node.label)}</h2><div class="choices">${choices.map(choice => `<button class="choice" data-id="${safeLabel(choice.id)}" data-answer="${choice.answer}" type="button"><span>${choice.answer === 'sim' ? 'Sim' : choice.answer === 'nao' ? 'Não' : safeLabel(state.nodes.get(choice.id).label)}</span><span class="arrow">→</span></button>`).join('')}</div>${endContent}`;
       content.querySelectorAll('.choice').forEach(button => button.addEventListener('click', () => {
         state.history.push(state.currentId);
         const answer = button.dataset.answer === 'sim' ? 'Sim' : button.dataset.answer === 'nao' ? 'Não' : state.nodes.get(button.dataset.id).label;
@@ -163,6 +172,38 @@
         state.log.push({ question: node.label, answer });
         renderNode(nextNode.id, false);
       }));
+      if (!choices.length) {
+        const feedbackMessage = document.getElementById('feedback-message');
+        const sendFeedback = document.getElementById('send-feedback');
+        const feedbackStatus = document.getElementById('feedback-status');
+        sendFeedback.addEventListener('click', () => {
+          const mensagem = feedbackMessage.value.trim();
+          if (!mensagem) { feedbackStatus.textContent = 'Escreva uma mensagem antes de enviar.'; return; }
+          sendFeedback.disabled = true;
+          feedbackStatus.textContent = 'Enviando feedback...';
+          const dataRegistro = new Date().toLocaleString('pt-BR');
+          const registro = [
+            ['Data', 'Pergunta', 'Resposta'],
+            ...state.log.map(entry => [dataRegistro, entry.question, entry.answer])
+          ].map(line => line.join('\t')).join('\n');
+          fetch(feedbackUrl, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({
+              registro,
+              mensagem
+            })
+          }).then(() => {
+            feedbackStatus.textContent = 'Feedback enviado. Obrigado!';
+            feedbackMessage.disabled = true;
+            sendFeedback.textContent = 'Enviado';
+          }).catch(() => {
+            feedbackStatus.textContent = 'Não foi possível enviar. Tente novamente.';
+            sendFeedback.disabled = false;
+          });
+        });
+      }
       backButton.disabled = state.history.length === 0;
       toolbar.hidden = state.log.length === 0;
     }
