@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Visualizador de fluxogramas a partir de uma planilha CSV">
+  <title>Fluxo de suporte</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">↳</span><span>fluxo<span class="brand-dot">.</span></span></div>
+    <div class="status" id="status"><span class="status-dot"></span><span id="statusText">Pronto para carregar</span></div>
+  </header>
+
+  <main class="workspace">
+    <section class="intro">
+      <div>
+        <p class="eyebrow">MAPA DE DECISÃO · SUPORTE TÉCNICO</p>
+        <h1>Fluxo de diagnóstico</h1>
+        <p class="lede">Navegue pelo diagrama operacional da sua planilha.</p>
+      </div>
+      <div class="stats" aria-live="polite">
+        <div><strong id="nodeCount">--</strong><span>nós</span></div>
+        <div><strong id="edgeCount">--</strong><span>conexões</span></div>
+      </div>
+    </section>
+
+    <section class="controls" aria-label="Controles do diagrama">
+      <label class="url-field">
+        <span>Fonte CSV publicada</span>
+        <input id="csvUrl" type="url" value="https://docs.google.com/spreadsheets/d/e/2PACX-1vRSUlhCmw7cvlmm9uz9OviQTLXHNnOl8dw1q7frP2TGDPqOe4i3MFhyD7MqoSFTqf0mRVqkUwZn1gvW/pub?gid=0&single=true&output=csv">
+      </label>
+      <button class="primary" id="loadButton">Carregar fluxo</button>
+      <label class="search-field"><span>⌕</span><input id="searchInput" type="search" placeholder="Buscar no fluxo..." disabled></label>
+      <div class="view-actions">
+        <button class="icon-button" id="zoomOut" title="Diminuir zoom" aria-label="Diminuir zoom">−</button>
+        <button class="zoom-label" id="zoomLabel" title="Restaurar zoom">100%</button>
+        <button class="icon-button" id="zoomIn" title="Aumentar zoom" aria-label="Aumentar zoom">+</button>
+        <button class="fit-button" id="fitButton" title="Enquadrar diagrama">Enquadrar</button>
+      </div>
+    </section>
+
+    <section class="diagram-shell">
+      <div class="legend"><span class="legend-item"><i class="swatch root"></i> categoria</span><span class="legend-item"><i class="swatch action"></i> ação</span><span class="legend-item"><i class="swatch question"></i> decisão</span><span class="legend-item"><i class="line-swatch"></i> Sim / Não</span></div>
+      <div class="canvas-wrap" id="canvasWrap">
+        <svg id="diagram" role="img" aria-label="Diagrama de fluxo"></svg>
+        <div class="empty-state" id="emptyState"><div class="empty-icon">⌁</div><h2>Carregue seu fluxo</h2><p>O diagrama aparecerá aqui a partir do CSV publicado.</p></div>
+        <div class="tooltip" id="tooltip"></div>
+      </div>
+    </section>
+  </main>
+  <aside class="details" id="details" aria-live="polite"><button id="closeDetails" aria-label="Fechar detalhes">×</button><p class="eyebrow">NÓ SELECIONADO</p><h2 id="detailTitle">Selecione um nó</h2><p id="detailBody">Clique em qualquer etapa do diagrama para ver seus caminhos.</p><div id="detailLinks"></div></aside>
+  <div class="toast" id="toast" role="alert"></div>
+  <script src="app.js"></script>
+</body>
+</html>
