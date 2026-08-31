@@ -17,15 +17,12 @@
   </header>
 
   <main class="workspace">
-    <section class="intro">
-      <div>
-        <p class="eyebrow">MAPA DE DECISÃO · SUPORTE TÉCNICO</p>
-        <h1>Fluxo de diagnóstico</h1>
-        <p class="lede">Navegue pelo diagrama operacional da sua planilha.</p>
-      </div>
-      <div class="stats" aria-live="polite">
-        <div><strong id="nodeCount">--</strong><span>nós</span></div>
-        <div><strong id="edgeCount">--</strong><span>conexões</span></div>
+    <section class="diagram-shell">
+      <div class="legend"><span class="legend-item"><i class="swatch root"></i> categoria</span><span class="legend-item"><i class="swatch action"></i> ação</span><span class="legend-item"><i class="swatch question"></i> decisão</span><span class="legend-item"><i class="line-swatch"></i> Sim / Não</span></div>
+      <div class="canvas-wrap" id="canvasWrap">
+        <svg id="diagram" role="img" aria-label="Diagrama de fluxo"></svg>
+        <div class="empty-state" id="emptyState"><div class="empty-icon">⌁</div><h2>Carregue seu fluxo</h2><p>O diagrama aparecerá aqui a partir do CSV publicado.</p></div>
+        <div class="tooltip" id="tooltip"></div>
       </div>
     </section>
 
@@ -37,17 +34,14 @@
       <button class="primary" id="loadButton">Carregar fluxo</button>
       <label class="search-field"><span>⌕</span><input id="searchInput" type="search" placeholder="Buscar no fluxo..." disabled></label>
       <div class="view-actions">
-        <button class="zoom-label" id="zoomLabel" title="Restaurar zoom">100%</button>
+        <button class="icon-button" id="zoomOutButton" title="Diminuir zoom">−</button>
+        <button class="zoom-label" id="zoomLabel" title="Restaurar zoom">10%</button>
+        <button class="icon-button" id="zoomInButton" title="Aumentar zoom">+</button>
         <button class="fit-button" id="fitButton" title="Enquadrar diagrama">Enquadrar</button>
       </div>
-    </section>
-
-    <section class="diagram-shell">
-      <div class="legend"><span class="legend-item"><i class="swatch root"></i> categoria</span><span class="legend-item"><i class="swatch action"></i> ação</span><span class="legend-item"><i class="swatch question"></i> decisão</span><span class="legend-item"><i class="line-swatch"></i> Sim / Não</span></div>
-      <div class="canvas-wrap" id="canvasWrap">
-        <svg id="diagram" role="img" aria-label="Diagrama de fluxo"></svg>
-        <div class="empty-state" id="emptyState"><div class="empty-icon">⌁</div><h2>Carregue seu fluxo</h2><p>O diagrama aparecerá aqui a partir do CSV publicado.</p></div>
-        <div class="tooltip" id="tooltip"></div>
+      <div class="stats" aria-live="polite">
+        <div><strong id="nodeCount">--</strong><span>nós</span></div>
+        <div><strong id="edgeCount">--</strong><span>conexões</span></div>
       </div>
     </section>
   </main>
