@@ -7,6 +7,7 @@ const statusText = document.querySelector('#statusText');
 const searchInput = document.querySelector('#searchInput');
 const tooltip = document.querySelector('#tooltip');
 const details = document.querySelector('#details');
+let fullGraph = { nodes: [], edges: [] };
 let graph = { nodes: [], edges: [] };
 let view = { scale: 10, x: 0, y: 0 };
 let drag = null;
@@ -77,7 +78,174 @@ function setZoom(next) { view.scale = Math.max(1, next); applyTransform(); }
 function setZoomCentered(next, cx, cy) { const canvasEl = document.querySelector('#canvasWrap'); const rect = canvasEl.getBoundingClientRect(); const centerX = cx ?? rect.width / 2; const centerY = cy ?? rect.height / 2; const scaleRatio = next / view.scale; view.x = centerX - (centerX - view.x) * scaleRatio; view.y = centerY - (centerY - view.y) * scaleRatio; view.scale = Math.max(1, next); applyTransform(); }
 function fit() { view = { scale: 10, x: 0, y: 0 }; applyTransform(); }
 function editZoomLabel() { const label = document.querySelector('#zoomLabel'); label.classList.add('editing'); const input = document.createElement('input'); input.type = 'number'; input.min = '1'; input.max = '1000'; input.value = Math.round(view.scale * 100) / 10; input.className = 'zoom-input'; label.textContent = ''; label.appendChild(input); input.focus(); input.select(); const commit = () => { const value = parseFloat(input.value); if (!isNaN(value) && value >= 1) { setZoom(value / 10); } label.classList.remove('editing'); }; input.addEventListener('blur', commit); input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); input.blur(); } else if (e.key === 'Escape') { e.preventDefault(); label.classList.remove('editing'); applyTransform(); } }); }
-async function loadCsv() { const button = document.querySelector('#loadButton'); button.disabled = true; statusText.textContent = 'Carregando planilha...'; try { const response = await fetch(document.querySelector('#csvUrl').value.trim() || DEFAULT_URL); if (!response.ok) throw new Error(`HTTP ${response.status}`); graph = makeGraph(parseCsv(await response.text())); if (!graph.nodes.length) throw new Error('Nenhum nó encontrado'); document.querySelector('#nodeCount').textContent = graph.nodes.length; document.querySelector('#edgeCount').textContent = graph.edges.length; searchInput.disabled = false; emptyState.classList.add('hidden'); status.classList.add('loaded'); statusText.textContent = 'Planilha sincronizada'; fit(); render(); } catch (error) { status.classList.remove('loaded'); statusText.textContent = 'Falha ao carregar'; showToast(`Não foi possível carregar o CSV: ${error.message}`); } finally { button.disabled = false; } }
+async function loadCsv() { const button = document.querySelector('#loadButton'); button.disabled = true; statusText.textContent = 'Carregando planilha...'; try { const response = await fetch(document.querySelector('#csvUrl').value.trim() || DEFAULT_URL); if (!response.ok) throw new Error(`HTTP ${response.status}`); fullGraph = makeGraph(parseCsv(await response.text())); if (!fullGraph.nodes.length) throw new Error('Nenhum nó encontrado'); searchInput.disabled = false; status.classList.add('loaded'); statusText.textContent = 'Planilha sincronizada'; buildFilterTree(); } catch (error) { status.classList.remove('loaded'); statusText.textContent = 'Falha ao carregar'; showToast(`Não foi possível carregar o CSV: ${error.message}`); } finally { button.disabled = false; } }
+function buildFilterTree() {
+  const treeContainer = document.querySelector('#filterTree');
+  treeContainer.innerHTML = '';
+
+  const nodeById = new Map(fullGraph.nodes.map(node => [node.id, node]));
+  const hierarchyChildren = new Map(fullGraph.nodes.map(node => [node.id, []]));
+  fullGraph.nodes.forEach(node => {
+    if (hierarchyChildren.has(node.row.pai)) hierarchyChildren.get(node.row.pai).push(node.id);
+  });
+  const graphChildren = new Map(fullGraph.nodes.map(node => [node.id, []]));
+  fullGraph.edges.forEach(edge => graphChildren.get(edge.from)?.push(edge.to));
+
+  const getSubtree = rootId => {
+    const subtree = new Set();
+    const pending = [rootId];
+    while (pending.length) {
+      const id = pending.pop();
+      if (subtree.has(id)) continue;
+      subtree.add(id);
+      pending.push(...(graphChildren.get(id) || []));
+    }
+    return subtree;
+  };
+
+  const rootNode = nodeById.get('1') || fullGraph.nodes.find(node => !nodeById.has(node.row.pai));
+  const roots = rootNode ? [rootNode] : fullGraph.nodes.filter(node => !nodeById.has(node.row.pai));
+
+  const rootEntries = [];
+  const createFilterItem = (node, level, expandable) => {
+    const item = document.createElement('div');
+    item.className = `filter-node level-${level}${level === 1 ? ' expanded' : ''}`;
+    const row = document.createElement('div');
+    row.className = 'filter-row';
+
+    const expander = document.createElement('button');
+    expander.className = `filter-expander${expandable ? '' : ' empty'}`;
+    expander.type = 'button';
+    expander.textContent = level === 1 ? '▼' : '▶';
+    expander.title = 'Expandir / Recolher';
+    expander.setAttribute('aria-label', 'Expandir ou recolher categoria');
+    if (expandable) {
+      expander.addEventListener('click', event => {
+        event.stopPropagation();
+        const expanded = item.classList.toggle('expanded');
+        expander.textContent = expanded ? '▼' : '▶';
+      });
+    }
+
+    const label = document.createElement('label');
+    label.className = 'filter-label';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = true;
+    const text = document.createElement('span');
+    text.textContent = node.label.replace(/\n/g, ' ');
+    label.append(checkbox, text);
+    row.append(expander, label);
+    item.append(row);
+
+    const children = document.createElement('div');
+    children.className = 'filter-children';
+    item.append(children);
+    return { item, children, checkbox };
+  };
+
+  const applyFilter = () => {
+    const visibleIds = new Set();
+    rootEntries.forEach(root => {
+      if (!root.checkbox.checked) return;
+      if (!root.children.length) {
+        getSubtree(root.id).forEach(id => visibleIds.add(id));
+        return;
+      }
+
+      let hasVisibleCategory = false;
+      root.children.forEach(category => {
+        if (!category.checkbox.checked) return;
+        hasVisibleCategory = true;
+        visibleIds.add(category.id);
+        if (!category.children.length) {
+          getSubtree(category.id).forEach(id => visibleIds.add(id));
+          return;
+        }
+        category.children.forEach(subcategory => {
+          if (subcategory.checkbox.checked) subcategory.subtree.forEach(id => visibleIds.add(id));
+        });
+      });
+      if (hasVisibleCategory) visibleIds.add(root.id);
+    });
+
+    graph.nodes = fullGraph.nodes.filter(node => visibleIds.has(node.id));
+    graph.edges = fullGraph.edges.filter(edge => visibleIds.has(edge.from) && visibleIds.has(edge.to));
+    document.querySelector('#nodeCount').textContent = graph.nodes.length;
+    document.querySelector('#edgeCount').textContent = graph.edges.length;
+    details.classList.remove('open');
+    selectedNodeElement = null;
+    if (graph.nodes.length) {
+      emptyState.classList.add('hidden');
+      render();
+      const query = searchInput.value.trim().toLowerCase();
+      if (query) {
+        document.querySelectorAll('.node').forEach(element => {
+          const node = graph.nodes.find(item => item.id === element.dataset.id);
+          element.style.opacity = node.label.toLowerCase().includes(query) ? '1' : '.18';
+        });
+      }
+      fit();
+    } else {
+      document.querySelector('#diagram').innerHTML = '';
+      emptyState.querySelector('h2').textContent = 'Nenhuma categoria selecionada';
+      emptyState.querySelector('p').textContent = 'Selecione uma categoria para exibir o fluxo.';
+      emptyState.classList.remove('hidden');
+    }
+  };
+
+  roots.forEach(rootNode => {
+    const rootChildren = (hierarchyChildren.get(rootNode.id) || []).map(id => nodeById.get(id)).filter(Boolean);
+    const root = { id: rootNode.id, checkbox: null, children: [] };
+    const rootView = createFilterItem(rootNode, 1, rootChildren.length > 0);
+    root.checkbox = rootView.checkbox;
+    rootEntries.push(root);
+    treeContainer.append(rootView.item);
+
+    rootChildren.forEach(categoryNode => {
+      const categoryChildren = (hierarchyChildren.get(categoryNode.id) || []).map(id => nodeById.get(id)).filter(Boolean);
+      const category = { id: categoryNode.id, checkbox: null, children: [] };
+      const categoryView = createFilterItem(categoryNode, 2, categoryChildren.length > 0);
+      category.checkbox = categoryView.checkbox;
+      root.children.push(category);
+      rootView.children.append(categoryView.item);
+
+      categoryChildren.forEach(subcategoryNode => {
+        const subcategoryView = createFilterItem(subcategoryNode, 3, false);
+        category.children.push({
+          checkbox: subcategoryView.checkbox,
+          subtree: getSubtree(subcategoryNode.id),
+        });
+        categoryView.children.append(subcategoryView.item);
+        subcategoryView.checkbox.addEventListener('change', () => {
+          category.checkbox.checked = category.children.some(child => child.checkbox.checked);
+          root.checkbox.checked = root.children.some(child => child.checkbox.checked);
+          applyFilter();
+        });
+      });
+
+      category.checkbox.addEventListener('change', () => {
+        category.children.forEach(child => {
+          child.checkbox.checked = category.checkbox.checked;
+        });
+        root.checkbox.checked = root.children.some(child => child.checkbox.checked);
+        applyFilter();
+      });
+    });
+
+    root.checkbox.addEventListener('change', () => {
+      root.children.forEach(category => {
+        category.checkbox.checked = root.checkbox.checked;
+        category.children.forEach(subcategory => {
+          subcategory.checkbox.checked = root.checkbox.checked;
+        });
+      });
+      applyFilter();
+    });
+  });
+
+  applyFilter();
+}
 document.querySelector('#loadButton').addEventListener('click', loadCsv); document.querySelector('#zoomLabel').addEventListener('click', editZoomLabel); document.querySelector('#fitButton').addEventListener('click', fit); document.querySelector('#zoomInButton').addEventListener('click', () => setZoom(view.scale + 1)); document.querySelector('#zoomOutButton').addEventListener('click', () => setZoom(view.scale - 1)); document.querySelector('#closeDetails').addEventListener('click', () => details.classList.remove('open')); searchInput.addEventListener('input', event => { const query = event.target.value.toLowerCase(); document.querySelectorAll('.node').forEach(node => { const item = graph.nodes.find(value => value.id === node.dataset.id); node.style.opacity = query && !item.label.toLowerCase().includes(query) ? '.18' : '1'; }); });
 document.addEventListener('keydown', event => { if (!event.ctrlKey || event.altKey || event.metaKey) return; if (event.key === '+' || event.key === '=') { event.preventDefault(); setZoomCentered(view.scale + 1); } else if (event.key === '-') { event.preventDefault(); setZoomCentered(view.scale - 1); } }); canvas.addEventListener('wheel', event => { event.preventDefault(); if (event.ctrlKey) { const rect = canvas.getBoundingClientRect(); setZoomCentered(view.scale + (event.deltaY < 0 ? 1 : -1), event.clientX - rect.left, event.clientY - rect.top); } else { view.y -= event.deltaY * 0.5; applyTransform(); } }, { passive: false }); canvas.addEventListener('selectstart', event => event.preventDefault()); canvas.addEventListener('pointerdown', event => { drag = { x: event.clientX - view.x, y: event.clientY - view.y, startX: event.clientX, startY: event.clientY, moved: false }; suppressNodeClick = false; canvas.setPointerCapture(event.pointerId); }); canvas.addEventListener('pointermove', event => { if (!drag) return; if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) > 4) drag.moved = true; view.x = event.clientX - drag.x; view.y = event.clientY - drag.y; applyTransform(); }); canvas.addEventListener('pointerup', () => { if (drag) suppressNodeClick = drag.moved; drag = null; }); canvas.addEventListener('pointercancel', () => { drag = null; suppressNodeClick = true; });
 loadCsv();
